@@ -7,8 +7,14 @@ from A2_elevation_smoothing import compute_smoothed_elevation, get_elevation_at_
 
 def prepare_data():
     """
-    Load DEM, station coordinates, and precipitation data.
-    Returns processed arrays and metadata needed for smoothing evaluation.
+    Loads DEM, station coordinates, and precipitation data.
+
+    Returns:
+        dem (np.ndarray): DEM raster.
+        transform (Affine): Affine transform for the DEM.
+        stations (DataFrame): Station metadata including X, Y, Elevation.
+        ppt_mean (np.ndarray): Mean precipitation per station.
+        xs, ys (np.ndarray): Station coordinate arrays.
     """
     dem, transform, _ = DataLoader.load_dem()
     stations = DataLoader.load_elevation_data()
@@ -30,8 +36,20 @@ def prepare_data():
 
 def evaluate_smoothing_combinations(dem, transform, xs, ys, ppt, directions, distances_px, widths_px):
     """
-    Evaluate combinations of smoothing direction, distance, and width
-    by computing the Pearson correlation between smoothed elevation and precipitation.
+    Tests multiple directional smoothing configurations and evaluates them
+    using Pearson correlation between smoothed elevation and precipitation.
+
+    Args:
+        dem (np.ndarray): Digital elevation model.
+        transform (Affine): Affine transform for mapping.
+        xs, ys (np.ndarray): Station coordinates.
+        ppt (np.ndarray): Mean precipitation at stations.
+        directions (list): List of azimuth angles (degrees).
+        distances_px (list): Smoothing distances in pixels.
+        widths_px (list): Lateral widths in pixels.
+
+    Returns:
+        DataFrame: Ranked smoothing configurations with Pearson correlations.
     """
     results = []
 
@@ -53,6 +71,7 @@ def evaluate_smoothing_combinations(dem, transform, xs, ys, ppt, directions, dis
 def main():
     dem, transform, stations, ppt, xs, ys = prepare_data()
 
+    # Define parameter ranges
     directions = [0, 45, 90, 135, 180, 225, 270, 315]
     distances_px = [20, 25, 35, 45, 55, 65, 75]
     widths_px = [0, 2, 4, 8]

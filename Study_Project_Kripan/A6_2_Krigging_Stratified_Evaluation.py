@@ -1,19 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-from pykrige.ok import OrdinaryKriging
+
 from A1_Data_loader import DataLoader
 from A2_elevation_smoothing import compute_smoothed_elevation, get_elevation_at_coords
 
-GRID_RES = 1000  # DEM resolution is 1 km
+GRID_RES = 1000  # DEM resolution in meters
 
 
 def load_best_variogram(path="best_variogram_params.npy"):
+    """
+    Load the best variogram model and parameters from a saved .npy file.
+    """
     data = np.load(path, allow_pickle=True).item()
     return data["model"].lower(), data["params"]
 
 
 def compute_nse(predicted, observed):
+    """
+    Compute Nash-Sutcliffe Efficiency (NSE) between predicted and observed values.
+    """
     mean_obs = np.mean(observed)
     numerator = np.sum((observed - predicted) ** 2)
     denominator = np.sum((observed - mean_obs) ** 2)
@@ -21,6 +27,9 @@ def compute_nse(predicted, observed):
 
 
 def stratified_metrics(elevations, observed, pred_raw, pred_smooth):
+    """
+    Compute RMSE and NSE for different elevation bands.
+    """
     bins = [0, 500, 1000, np.inf]
     labels = ["Low (<500m)", "Mid (500–1000m)", "High (>1000m)"]
     results = []
@@ -28,7 +37,7 @@ def stratified_metrics(elevations, observed, pred_raw, pred_smooth):
     for i in range(3):
         mask = (elevations >= bins[i]) & (elevations < bins[i + 1])
         if np.sum(mask) < 10:
-            continue  # skip bins with very few stations
+            continue  # Skip small sample groups
 
         obs = observed[mask]
         raw = pred_raw[mask]
@@ -44,16 +53,16 @@ def stratified_metrics(elevations, observed, pred_raw, pred_smooth):
     return results
 
 
-# === Bar chart: RMSE and NSE per elevation band ===
 def plot_stratified_bar_chart(results):
+    """
+    Plot RMSE and NSE per elevation band as bar charts.
+    """
     labels = [r[0] for r in results]
-    counts = [r[1] for r in results]
     rmse_raw = [r[2] for r in results]
     nse_raw = [r[3] for r in results]
     rmse_smooth = [r[4] for r in results]
     nse_smooth = [r[5] for r in results]
-
-    x = np.arange(len(labels))  # label positions
+    x = np.arange(len(labels))
     width = 0.35
 
     # RMSE Plot
@@ -85,47 +94,44 @@ def plot_stratified_bar_chart(results):
 
 
 def main():
-    # Load data
+    # === Load data ===
     dem, transform, _ = DataLoader.load_dem()
     stations = DataLoader.load_elevation_data()
     ppt_df = DataLoader.load_precipitation_data()
 
     ppt_df = ppt_df[stations.index]
     ppt_mean = ppt_df.mean().values
-    xs = stations["X"].values
-    ys = stations["Y"].values
+    xs, ys = stations["X"].values, stations["Y"].values
 
-    # Elevation extraction
+    # === Compute elevations ===
     smoothed = compute_smoothed_elevation(dem, 135, 55, 8)
     raw_elev = get_elevation_at_coords(dem, transform, xs, ys)
     smooth_elev = get_elevation_at_coords(smoothed, transform, xs, ys)
 
-    # Valid stations
+    # === Filter valid records ===
     valid = ~np.isnan(ppt_mean) & ~np.isnan(raw_elev) & ~np.isnan(smooth_elev)
     z_valid = ppt_mean[valid].astype(float)
     elev_raw = raw_elev[valid]
     elev_smooth = smooth_elev[valid]
 
-    # Regression predictions
+    # === Fit regression models ===
     model_raw = LinearRegression().fit(elev_raw.reshape(-1, 1), z_valid)
     pred_raw = model_raw.predict(elev_raw.reshape(-1, 1))
 
     model_smooth = LinearRegression().fit(elev_smooth.reshape(-1, 1), z_valid)
     pred_smooth = model_smooth.predict(elev_smooth.reshape(-1, 1))
 
-    # General metrics
+    # === Overall performance ===
     rmse_raw = np.sqrt(np.mean((pred_raw - z_valid) ** 2))
     rmse_smooth = np.sqrt(np.mean((pred_smooth - z_valid) ** 2))
     nse_raw = compute_nse(pred_raw, z_valid)
     nse_smooth = compute_nse(pred_smooth, z_valid)
 
-    # Print overall performance
     print("=== Overall Model Performance ===")
     print(f"Raw Elevation:     RMSE = {rmse_raw:.3f}, NSE = {nse_raw:.3f}")
-    print(f"Smoothed Elevation: RMSE = {rmse_smooth:.3f}, NSE = {nse_smooth:.3f}")
-    print("")
+    print(f"Smoothed Elevation: RMSE = {rmse_smooth:.3f}, NSE = {nse_smooth:.3f}\n")
 
-    # === Plot 1: Scatter plots ===
+    # === Plot scatter comparison ===
     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
 
     axs[0].scatter(z_valid, pred_raw, alpha=0.6, color="orange")
@@ -143,7 +149,7 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    # === Plot 2: Histogram of elevation distribution ===
+    # === Plot elevation distribution ===
     plt.figure(figsize=(8, 4))
     plt.hist(elev_raw, bins=20, color="skyblue", edgecolor="black")
     plt.xlabel("Station Elevation (m)")
@@ -160,8 +166,7 @@ def main():
     for label, count, rmse_r, nse_r, rmse_s, nse_s in stratified:
         print(f"{label} ({count} stations)")
         print(f"  Raw:     RMSE={rmse_r:.3f}, NSE={nse_r:.3f}")
-        print(f"  Smoothed: RMSE={rmse_s:.3f}, NSE={nse_s:.3f}")
-        print("")
+        print(f"  Smoothed: RMSE={rmse_s:.3f}, NSE={nse_s:.3f}\n")
 
     plot_stratified_bar_chart(stratified)
 
